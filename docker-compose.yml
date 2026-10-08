@@ -1,0 +1,66 @@
+# Production-style stack: PostgreSQL + API + nginx (web).
+#   cp deploy/.env.production.example .env.production   (fill it in)
+#   docker compose --env-file .env.production up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: arkan
+      POSTGRES_USER: arkan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arkan -d arkan"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DB_CLIENT: pg
+      DATABASE_URL: postgres://arkan:${POSTGRES_PASSWORD}@db:5432/arkan
+      CLIENT_URL: ${PUBLIC_URL:?set PUBLIC_URL}
+      API_PUBLIC_URL: ${PUBLIC_URL}
+      CLIENT_ORIGIN: ${PUBLIC_URL}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-Arkan Zone <no-reply@arkanzone.com>}
+      CONTACT_INBOX: ${CONTACT_INBOX:-}
+      PAYMOB_SECRET_KEY: ${PAYMOB_SECRET_KEY:-}
+      PAYMOB_PUBLIC_KEY: ${PAYMOB_PUBLIC_KEY:-}
+      PAYMOB_HMAC_SECRET: ${PAYMOB_HMAC_SECRET:-}
+      PAYMOB_INTEGRATION_IDS: ${PAYMOB_INTEGRATION_IDS:-}
+      BUNNY_LIBRARY_ID: ${BUNNY_LIBRARY_ID:-}
+      BUNNY_TOKEN_KEY: ${BUNNY_TOKEN_KEY:-}
+    volumes:
+      - uploads:/app/uploads
+
+  web:
+    build:
+      context: .
+      args:
+        VITE_API_URL: /api
+        VITE_GA_ID: ${VITE_GA_ID:-}
+        VITE_CLARITY_ID: ${VITE_CLARITY_ID:-}
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+volumes:
+  pgdata:
+  uploads:
